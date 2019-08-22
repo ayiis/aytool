@@ -1,0 +1,9 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.zip
+*.txt
+aytool.egg-info/
+build/
+dist/
