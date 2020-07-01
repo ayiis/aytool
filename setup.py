@@ -1,11 +1,12 @@
 import setuptools
+from aytool import version
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="aytool",
-    version="0.19.821",
+    version=version,
     author="ayiis",
     author_email="ayiis@126.com",
     description="ayiis's python tool",
