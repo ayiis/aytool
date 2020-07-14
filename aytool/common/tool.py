@@ -156,12 +156,9 @@ class ReLateSub:
     default_escape = "\x00"
 
     def do(line, rstring_keep, trans_dict):
-
-        return ReLateSub.do_method1(line, rstring_keep, trans_dict)
-
-    def do_method1(line, rstring_keep, trans_dict):
         """
-            * 默认：此方法不需要对翻译词典进行排序，适用于 词典太大 && 词典覆盖全面 的情况
+            * 默认：此方法不需要对翻译词典进行排序，适用于 词典覆盖全面 的情况
+                - 对翻译词典进行排序的方法（适用于 词典覆盖不全面 的情况）已删除
             line: 目标句子
             rstring_keep: 网址｜特殊符号｜固定名词｜数字 等
             trans_dict: 翻译对应的词典
@@ -179,36 +176,6 @@ class ReLateSub:
         # 排序，先翻译长句再翻译短句
         for raw in keys:
             trans = trans_dict.get(raw, raw)
-            line = re.sub(re.escape(raw), trans, line, flags=re.I)
-
-        # 将 ReLateSub.re_cache 替换回来
-        result = re.sub("[%s]" % ReLateSub.default_escape, ReLateSub.re_unescape, line)
-
-        # 检查是否有 default_escape
-        if ReLateSub.re_cache:
-            raise Exception(repr("翻译内容含有 %s 终止符" % ReLateSub.default_escape))
-
-        return result
-
-    def do_method2(line, rstring_keep, trans_dict):
-        """
-            * 此方法需要对翻译词典进行排序，适用于 词典覆盖不全面（或 aa bb cc 只翻译了 aa bb）的情况
-            line: 目标句子
-            rstring_keep: 网址｜特殊符号｜固定名词｜数字 等
-            trans_dict: 翻译对应的词典
-        """
-        ReLateSub.re_cache.clear()
-
-        # 检查是否有 default_escape
-        if ReLateSub.default_escape in line:
-            raise Exception(repr("目标字符串含有 %s 终止符" % ReLateSub.default_escape))
-
-        # 提取网址｜特殊符号｜固定名词｜数字 等，保存到 ReLateSub.re_cache
-        line = re.sub(rstring_keep, ReLateSub.re_escape, line)
-        # 排序，先翻译长句再翻译短句
-        good_trans_list = sorted(list(trans_dict.items()), key=lambda x: -len(x[0]))
-        for item in good_trans_list:
-            raw, trans = item
             line = re.sub(re.escape(raw), trans, line, flags=re.I)
 
         # 将 ReLateSub.re_cache 替换回来
