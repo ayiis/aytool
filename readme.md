@@ -22,7 +22,12 @@ from aytool.spider import pyquery
 
 ## 更新服务器的包:
 
-Just chage the files and then:
+Just run:
+```
+bash build.bash
+```
+
+Just change the files and then:
 ```shell
     rm dist/* -f
     python3 setup.py sdist bdist_wheel
@@ -30,6 +35,6 @@ Just chage the files and then:
     ayiis 123456
 ```
 
-# Ref: 
+# Ref:
 
 `python build pip server.md` In `paper`

@@ -141,36 +141,53 @@ def convert_stamp_to_datetime(stamp, strftime="%Y-%m-%d %H:%M:%S"):
     return time.strftime(strftime, time.localtime(int(stamp)))
 
 
-class RELaterSub(object):
+class ReLateSub:
     """
         常用于整句翻译，将不需要翻译的部分字符串分组提取出来，翻译完成后再填充回去
+            1. 将句子里的 网址｜特殊符号｜固定名词｜数字 等提取出来，保存在列表，原来的位置使用 \x00 占位
+            2. 翻译句子，完全匹配。先翻译长句再翻译短句
+            3. 用列表保存的 网址｜特殊符号｜固定名词｜数字 等把占位的 \x00 替换回来
+            4. 返回结果
+
         示范：
-        with RELaterSub(RSTRING, test_line) as rs:
-            rs.line = re.sub(re.escape(key), ****, rs.line, flags=re.I)
-            test_line = rs.finish()
+            result = ReLateSub.do(test_trans_line, RSTRING, trans_dict)
     """
+    re_cache = []
     default_escape = "\x00"
-    default_unescape = r"[\0]"
+    default_unescape = "[\x00]"
 
-    def __init__(self, rstring_keep, line):
-        self.re_cache = []
-        self.line = re.sub(rstring_keep, self.re_escape, line)
+    def do(line, rstring_keep, trans_dict):
+        """
+            line: 目标句子
+            rstring_keep: 网址｜特殊符号｜固定名词｜数字 等
+            trans_dict: 翻译对应的词典
+        """
+        ReLateSub.re_cache.clear()
 
-    def re_escape(self, match):
-        self.re_cache.append(match.group(0))
-        return self.default_escape
+        # 检查 \x00
+        if "\x00" in line:
+            raise Exception("目标字符串含有 \x00 终止符")
 
-    def re_unescape(self, match):
-        try:
-            return self.re_cache.pop()
-        except Exception:
-            raise Exception("字符串里面不能含有 \\0 终止符")
+        # 提取网址｜特殊符号｜固定名词｜数字 等，保存到 ReLateSub.re_cache
+        line = re.sub(rstring_keep, ReLateSub.re_escape, line)
+        # 排序，先翻译长句再翻译短句
+        good_trans_list = sorted(list(trans_dict.items()), key=lambda x: -len(x[0]))
+        for item in good_trans_list:
+            raw, trans = item
+            line = re.sub(re.escape(raw), trans, line, flags=re.I)
 
-    def finish(self):
-        return re.sub(self.default_unescape, self.re_unescape, self.line)
+        # 将 ReLateSub.re_cache 替换回来
+        result = re.sub(ReLateSub.default_unescape, ReLateSub.re_unescape, line)
 
-    def __enter__(self):
-        return self
+        # 检查 \x00
+        if ReLateSub.re_cache:
+            raise Exception("翻译内容含有 \x00 终止符")
 
-    def __exit__(self, type, value, traceback):
-        pass
+        return result
+
+    def re_escape(match):
+        ReLateSub.re_cache.append(match.group(0))
+        return ReLateSub.default_escape
+
+    def re_unescape(match):
+        return ReLateSub.re_cache.pop()
