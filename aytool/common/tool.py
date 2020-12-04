@@ -2,14 +2,17 @@
 # -*- coding: utf-8 -*-
 """ 公共方法 """
 
+import os
 import re
 import json
 import datetime
+import subprocess
 from datetime import timedelta
 import time
 import decimal
 import zlib
 import hashlib
+import traceback
 
 from bson.objectid import ObjectId
 from inspect import getframeinfo, stack
@@ -28,7 +31,7 @@ class MyEncoder(json.JSONEncoder):
                 return None
             else:
                 return obj.strftime("%Y-%m-%d")
-        elif isinstance(obj, datetime.timedelta):
+        elif isinstance(obj, timedelta):
             return time.strftime("%H:%M:%S", time.localtime(obj.seconds + 60 * 60 * (24 - 8)))  # hacked
         elif isinstance(obj, decimal.Decimal):
             return float(obj)
@@ -64,6 +67,11 @@ def gzip_decode(g_data):
 
 def fixed_float(num, fixed=2):
     """
+        * 统一修复浮点数的不精确缺陷
+            * @test 35.855 73.315 1.005 859.385 0.045
+            1.04999999999999994 == 1.05
+            1.0049999999999998 == 1.005
+            1.0499999999999997 == 1.0499999999999996 == 1.0499999999999995
         精确到亿 999999999
     """
     return round(float("%fe-%s" % (round(float("%fe+%s" % (num, fixed)), 0), fixed)), fixed)
@@ -81,7 +89,7 @@ def aprint(*args):
 
 
 def get_datetime_string(strftime="%Y-%m-%d %H:%M:%S"):
-    return datetime.datetime.now().strftime(strftime)
+    return time.strftime(strftime, time.localtime(time.time()))
 
 
 def get_date_string():
@@ -193,3 +201,101 @@ class ReLateSub:
 
     def re_unescape(match):
         return ReLateSub.re_cache.pop()
+
+
+def read_with_linesep(fr, linesep):
+    """
+        open 的 newline 参数默认只能是 [\n][\r][""]，此处自己实现了一个自定义换行符的方法
+        返回一个迭代器。
+
+        with open("./test.txt", "rb") as rf:
+            for line in read_with_linesep(rf, b"\x02"):
+                print("line:", line)
+    """
+    # 根据 linesep 的数据类型判断 char_join 的数据类型
+    if isinstance(linesep, bytes):
+        char_join = b""
+    else:
+        char_join = ""
+
+    # 缓存读取的数据
+    sentense = []
+    while True:
+        char = fr.read(1)
+        # 文件结束，如果 sentense 有数据则返回
+        if not char:
+            if sentense:
+                yield StopIteration(char_join.join(sentense))
+            else:
+                yield StopIteration()
+            break
+        # 读到 linesep
+        elif char == linesep:
+            yield char_join.join(sentense)
+            sentense.clear()
+        else:
+            sentense.append(char)
+
+
+def execute_command(command, encoding=None):
+    """
+        在 MacOS 下，两种方式未见区别
+    """
+    if not encoding:
+        return os.popen(command).read()
+    else:
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        out, err = proc.communicate()
+        return (out or err).decode(encoding)
+
+
+class PassException(object):
+    """
+        No exception will be raised under this statement:
+        Ignore: KeyboardInterrupt / Error
+
+        e.g.
+
+            with PassException("This will show if error occurs.") as pe:
+                ffff(zzz)
+
+            print("This will fire whatever happened in `with PassException()`.")
+
+            >>> 🚸 PassException NameError: name 'ffff' is not defined
+
+        Break:
+            https://stackoverflow.com/questions/11195140/break-or-exit-out-of-with-statement
+
+            with PassException() as pe:
+                if True:
+                    print("You Break here.")
+                    raise pe.Break
+
+                print("You will not see this")
+
+            >>> You Break here.
+            >>>
+    """
+    class Break(Exception):
+        """Break out of the with statement"""
+        pass
+
+    def __init__(self, desc="No desc"):
+        self.desc = desc
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+
+        if exc_type == self.Break:
+            return True
+
+        if exc_traceback:
+            print("%s %s: %s" % ("🚸PassException", exc_type.__name__, ",".join(exc_value.args)))
+            traceback.print_tb(exc_traceback)
+            print(self.desc)
+            print()
+
+            # Magic trick: ignore all exceptions by returning `True`
+            return True

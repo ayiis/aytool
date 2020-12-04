@@ -7,4 +7,5 @@ __pycache__/
 aytool.egg-info/
 build/
 dist/
+tests/data/
 build.bash
