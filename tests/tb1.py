@@ -244,7 +244,7 @@ class Loca(object):
     def loca_h(self, h):
 
         for i, th in enumerate(self.table_h):
-            if h < th:
+            if h + Glb.PADDING_HEIGHT < th:
                 return i - 1
 
         return i
@@ -284,6 +284,10 @@ def cut_text2(table_h, table_w):
     result[:] = ""
 
     loca = Loca(table_h, table_w)
+
+    # line = [90, 748, 97, 0, '2']
+    # loca.loca_h(line[1])
+    # q.d()
 
     for line in table_text:
 

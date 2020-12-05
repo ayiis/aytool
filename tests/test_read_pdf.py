@@ -30,12 +30,15 @@ if True:
 
     # Elegant, Pythonic API
     # with pikepdf.open('./data/Paperid975.pdf') as pdf:
-    with pikepdf.open('./data/20190417181644xqqs.pdf') as pdf:
+    # with pikepdf.open('./data/20190417181644xqqs.pdf') as pdf:
+    with pikepdf.open("./data/20200324164938兴全趋势投资混合型证券投资基金（LOF）2019年度报告.pdf") as pdf:
         num_pages = len(pdf.pages)
-        del pdf.pages[:2]
-        del pdf.pages[5:]
-        del pdf.pages[-2]
-        del pdf.pages[-3]
+        # del pdf.pages[:2]
+        # del pdf.pages[5:]
+        # del pdf.pages[-2]
+        # del pdf.pages[-3]
+        del pdf.pages[62:]
+        del pdf.pages[:-3]
         pdf.save('output.2.pdf')
         q.d()
 
@@ -58,7 +61,8 @@ if True:
     # ==============================================================================
     # Main Program
     # ==============================================================================
-    ifile = "./data/20190417181644xqqs.pdf"
+    # ifile = "./data/20190417181644xqqs.pdf"
+    ifile = "./data/20200324164938兴全趋势投资混合型证券投资基金（LOF）2019年度报告.pdf"
     ofile = ifile + ".txt"
 
     doc = fitz.open(ifile)
