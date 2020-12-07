@@ -69,8 +69,8 @@ import cv2
 import numpy as np
 
 # doc = fitz.Document("./target.pdf")
-# doc = fitz.Document("./data/20200324164938兴全趋势投资混合型证券投资基金（LOF）2019年度报告.pdf")
-doc = fitz.Document("./output.2.pdf")
+doc = fitz.Document("./data/20200324164938兴全趋势投资混合型证券投资基金（LOF）2019年度报告.pdf")
+# doc = fitz.Document("./output.2.pdf")
 # pno = 9
 # page = doc.loadPage(pno)
 
@@ -86,10 +86,14 @@ for pno, page in enumerate(doc):
         # table_title = "卖基金份额，受市场供需关系等各种因素的影响"
         # table_title = "主要财务指标"
         # table_title = "本报告期基金份额净值增长率及其与同期业绩比较基准收益率的比较"
-        table_title = "期末按债券品种分类的债券投资组合"
+        # table_title = "期末按公允价值占基金资产净值比例大小排序的前五名债券投资明细"
+        # table_title = "累计卖出金额超出期初基金资产净值"
+        table_title = "期末按公允价值占基金资产净值比例大小排序的所有股票投资明细"
+        # table_title = "8.5 期末按债券品种分类的债券投资组合"
         search1 = page.searchFor(table_title, hit_max=1)
         if not search1:
-            raise ValueError("table top delimiter not found")
+            continue
+            # raise ValueError("table top delimiter not found")
         rect1 = search1[0]  # the rectangle that surrounds the search string
         ymin = rect1.y1     # table starts below this value
         ymax = 9999
@@ -221,7 +225,11 @@ for pno, page in enumerate(doc):
                 break
 
         print()
-        print("\ntotal_result:\n", total_result)
+        print("\ntotal_result:\n")
+        for line in total_result:
+            print(line)
+
+        q.d()
         exit()
 
     except Exception as e:
