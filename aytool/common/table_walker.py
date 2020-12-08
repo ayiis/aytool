@@ -25,35 +25,42 @@ class Walker(object):
     DEBUG = True
     # magic number
     ALMOST_ALL = 0.968
+    TEXT_GRAY = 218     # 字体和表格线的灰度（注意表头有时候会存在灰色背景） < TEXT_GRAY
 
-    def __init__(self, pdf_file):
+    def __init__(self, pdf_file, debug=False, text_gray=218):
         super(Walker, self).__init__()
         self.pdf_file = pdf_file
         self.pdf = fitz.Document(pdf_file)
         self.page_count = len(self.pdf)
+        self.DEBUG = debug
+        self.TEXT_GRAY = text_gray
 
     def get_rect_text(self, page, rect):
 
         tab_rect = fitz.Rect(rect).irect
 
         if tab_rect.isEmpty or tab_rect.isInfinite:
-            print("Warning: incorrect rectangle coordinates!")
+            self.print("Warning: incorrect rectangle coordinates!")
             return []
 
         words = page.getTextWords()
 
         if not words:
-            print("Warning: page contains no text")
+            self.print("Warning: page contains no text")
             return []
 
         # 根据 高度 筛选
         alltxt = [w[:5] for w in words if rect[1] <= w[1] <= rect[3]]
 
         if not alltxt:
-            print("Warning: no text found in rectangle!")
+            self.print("Warning: no text found in rectangle!")
             return []
 
         return alltxt
+
+    def print(self, *args):
+        if self.DEBUG:
+            print(*args)
 
     def get_snapshot(self, page):
 
@@ -63,14 +70,14 @@ class Walker(object):
         img_np = cv2.imdecode(nparr, 0)
 
         # 有点遗憾，这个切割方法并不精确
-        img_np[img_np < 218] = 0
+        img_np[img_np < self.TEXT_GRAY] = 0
         img_np[img_np != 0] = 1
 
         return img_np
 
     def save_process_image(self, np_binary, save_path):
         if self.DEBUG:
-            print("Save to:", save_path)
+            self.print("Save to:", save_path)
             _, imth = cv2.threshold(np_binary, 0, 255, cv2.THRESH_BINARY)
             cv2.imwrite(save_path, imth)
 
@@ -165,7 +172,7 @@ class Walker(object):
         size_chr, size_de = self.sym_calc(cond_list)
 
         self.PADDING_HEIGHT = max(self.PADDING_HEIGHT, round(size_de / 2))
-        print("size_chr: %s, size_de: %s, self.PADDING_HEIGHT: %s" % (round(size_chr, 2), round(size_de, 2), self.PADDING_HEIGHT))
+        self.print("size_chr: %s, size_de: %s, self.PADDING_HEIGHT: %s" % (round(size_chr, 2), round(size_de, 2), self.PADDING_HEIGHT))
 
         return size_chr, size_de
 
@@ -176,7 +183,10 @@ class Walker(object):
         return np_list.sum() / np_list.size < 1 - self.ALMOST_ALL
 
     def fix_zip_cut_points(self, dn, p_cut_start, p_cut_end):
-
+        """
+            裁剪 表格外的内容
+            裁剪 表格线向外逃逸的 0
+        """
         total_time = (p_cut_end[1] - p_cut_start[1]) * (p_cut_end[0] - p_cut_start[0])
 
         # 从4个方向逼近，直到不能再逼近为止
@@ -298,7 +308,7 @@ class Walker(object):
 
         # 默认存在 贯穿的空白 ，以此为标准切割高h（切割后选最大的区域） 🚸 应该取第 1 个足够大的区域吧
         h_points = self.calc_continue_point(hl)
-        print("h_points is: %s of %s\n" % (h_points, (h, w)))
+        self.print("h_points is: %s of %s\n" % (h_points, (h, w)))
 
         for h_point in h_points:
             """
@@ -311,29 +321,22 @@ class Walker(object):
                     区域内没有字符 -> skip
             """
             content_text = [x for x in page_text if h_point[0] < (x[3] + x[1]) / 2 - amin < h_point[1]]
+
+            # ⚠️ 是否需要改成直接从高度获取
             size_chr, size_de = self.calc_char_len(content_text)
             if not size_chr * size_de:
                 continue
-
-            # if any([1 for x in content_text if '占期初基金资产净值' in x[-1]]):
-            #     q.d()
 
             if h_point[1] - h_point[0] < size_chr * 1.5:
                 continue
 
             # h_point = sorted(h_points, key=lambda a: -(a[1] - a[0]))[0]
-            print("[filter] h_point take: %s" % (h_point,))
+            self.print("[filter] h_point take: %s" % (h_point,))
 
             # 同理，在贯穿的空白内切割宽w
             # 注释前：可以处理同一行里的多个表格
             # 注释后：视为 1 个表格
-            # wl = [self.np_almost_all_is1(np_png[h_point[0]: h_point[1], i]) for i in range(w)]
-            # w_points = self.calc_continue_point(wl)
-            # w_point = sorted(w_points, key=lambda a: -(a[1] - a[0]))[0]
-            # print("w_point is: %s, take: %s" % (w_points, w_point))
             wl = [self.np_almost_all_is0(np_png[h_point[0]: h_point[1], i]) for i in range(w)]
-            # w_points = self.calc_continue_point(wl)
-            # w_point = (w_points[0][1], w_points[-1][1], w_points[-1][0] - w_points[0][1])
             if True not in wl:
                 continue
             w_point = [wl.index(True), len(wl) - wl[::-1].index(True)]
@@ -342,18 +345,15 @@ class Walker(object):
             p_cut_start = [h_point[0], w_point[0]]
             p_cut_end = [h_point[1], w_point[1]]
 
-            print("doing fix zip cut points: ", p_cut_start, p_cut_end)
-
-            # self.save_process_image(np_png[p_cut_start[0]: p_cut_end[0], p_cut_start[1]: p_cut_end[1]], "tmp.tn.png")
-            # self.save_process_image(np_png[h_point[0]: h_point[1], w_point[0]: p_cut_end[1]], "tmp.tn.png")
-            # q.d()
-
-            # self.save_process_image(np_png, "tmp.np_png.png")
+            self.print("doing fix zip cut points: ", p_cut_start, p_cut_end)
+            self.save_process_image(np_png[p_cut_start[0]: p_cut_end[0], p_cut_start[1]: p_cut_end[1]], "tw.tn.png")
 
             # 压缩干扰行 逼近表格
             fixed = self.fix_zip_cut_points(np_png, p_cut_start=p_cut_start, p_cut_end=p_cut_end)
             if not fixed:
                 continue
+
+            self.save_process_image(np_png[p_cut_start[0]: p_cut_end[0], p_cut_start[1]: p_cut_end[1]], "tw.tn2.png")
 
             # 再次判断表格的大小，最小 1x2
             if (p_cut_end[0] - p_cut_start[0]) <= size_chr * 1.5:
@@ -361,21 +361,20 @@ class Walker(object):
             if (p_cut_end[1] - p_cut_start[1]) <= size_chr * 2.5:
                 continue
 
-            print("done fix zip cut points to: ", p_cut_start, p_cut_end)
+            self.print("done fix zip cut points to: ", p_cut_start, p_cut_end)
 
             # 把表格的四条边给我抠出来
             np_table = np_png[p_cut_start[0]: p_cut_end[0], p_cut_start[1]: p_cut_end[1]]
 
-            # if any([1 for x in content_text if '占期初基金资产净值' in x[-1]]):
+            # if any([1 for x in content_text if '占基金资产净值比例' in x[-1]]):
             #     q.d()
-            #     exit()
 
             break
 
         else:
             return None
 
-        self.save_process_image(np_table, "tmp.t0.png")
+        self.save_process_image(np_table, "tw.t0.png")
 
         ht, wt = np_table.shape
 
@@ -392,18 +391,18 @@ class Walker(object):
         ht_pointls = self.calc_continue_point(htl)
         ht_points = list(map(lambda h: round((h[0] + h[1]) / 2), ht_pointls))
 
-        print()
-        print("表格的行数 %s: 0~%s %s" % (len(ht_points) - 1, ht, ht_points))
-        print(ht_pointls)
+        self.print()
+        self.print("表格的行数 %s: 0~%s %s" % (len(ht_points) - 1, ht, ht_points))
+        self.print(ht_pointls)
 
-        print("表格的列数 %s: 0~%s %s" % (len(wt_points) - 1, wt, wt_points))
-        print(wt_pointls)
-        print()
+        self.print("表格的列数 %s: 0~%s %s" % (len(wt_points) - 1, wt, wt_points))
+        self.print(wt_pointls)
+        self.print()
 
         ht_points[0], wt_points[0] = (0, 0)     # 理所当然是 0
         # ht_points[-1], wt_points[-1] = (len(htl) - 1, len(wtl) - 1)     # 理所当然是 边长 （但是缩小一点范围也未尝不可）
 
-        self.draw_a_table(np_table, ht_points, wt_points, "tmp.t1.png")
+        self.draw_a_table(np_table, ht_points, wt_points, "tw.t1.png")
 
         return (p_cut_start, p_cut_end, ht_points, wt_points)
 
@@ -427,15 +426,9 @@ class Walker(object):
         result[:] = ""
 
         tloca = TextLoca(ht_points, wt_points)
-
         for line in table_content:
-
-            try:
-                h, w = tloca.do(line)
-                result[h, w] = result[h, w] + line[4]
-            except Exception as e:
-                print("e:", e)
-                q.d()
+            h, w = tloca.do(line)
+            result[h, w] = result[h, w] + line[4]
 
         return result
 
@@ -450,7 +443,7 @@ class Walker(object):
             if not search_rect:
                 continue
 
-            print("Got result in page %s" % (page_no))
+            self.print("Got result in page %s" % (page_no))
 
             # 取第 1 个结果的 结束，和页面最大值
             hmin = round((search_rect[0])[3])
@@ -459,42 +452,45 @@ class Walker(object):
             # 获取 hmin ~ hmax 下面的所有文字
             page_texts = self.get_rect_text(page, [0, hmin, 9999, hmax])
             if not page_texts:
-                print("No text below hmin %s" % (hmin))
+                self.print("No text below hmin %s" % (hmin))
                 continue
 
             # 获取表格的关键点
             page_table_points = self.find_table_below(page, hmin, hmax, page_texts)
             if not page_table_points:
-                print("Seems no table in this page %s." % page_no)
+                self.print("Seems no table in this page %s." % page_no)
                 continue
 
+            # q.d()
             # 切割表格内的文字
             table_contents = self.find_content_in_table(page_table_points, page_texts)
 
-            # print("\ntable_contents:\n", table_contents)
+            self.print("\ntable_contents:\n", table_contents)
 
             # 取当前页的结果
-            page_texts_next = page_texts
+            page_next_texts = page_texts
             th_end_next = page_table_points[1][0]
+
+            # q.d()
 
             while "判断跨页":
 
                 # 判断 表格距离页面底部的高度
                 table_end_space_rate = ((page.rect[3] - th_end_next) / page.rect[3])
                 if table_end_space_rate > 0.125:
-                    print("判断跨页：条件0失败，表格结束点 %s，页面高度 %s，距离页面底部高度 %s%% > 12.5%%" % (th_end_next, page.rect[3], round(table_end_space_rate * 100, 2)))
+                    self.print("判断跨页：条件0失败，表格结束点 %s，页面高度 %s，距离页面底部高度 %s%% > 12.5%%" % (th_end_next, page.rect[3], round(table_end_space_rate * 100, 2)))
                     break
-                # else:
-                #     print("判断跨页：条件0成功，表格结束点 %s，页面高度 %s，距离页面底部高度 %s%% <= 12.5%%" % (th_end_next, page.rect[3], round(table_end_space_rate * 100, 2)))
+                else:
+                    self.print("判断跨页：条件0成功，表格结束点 %s，页面高度 %s，距离页面底部高度 %s%% <= 12.5%%" % (th_end_next, page.rect[3], round(table_end_space_rate * 100, 2)))
 
                 # 判断 页数 是否有效
                 page_no = page_no + 1
                 if self.page_count <= page_no:
-                    print("判断跨页：已经达到最后一页")
+                    self.print("判断跨页：已经达到最后一页")
                     break
 
                 # 判断 表格下面的内容 不超过2行
-                table_down_texts = [t for t in page_texts_next if t[1] > th_end_next]
+                table_down_texts = [t for t in page_next_texts if t[1] > th_end_next]
                 table_down_texts = sorted(table_down_texts, key=lambda x: x[1])
 
                 if table_down_texts:
@@ -505,10 +501,10 @@ class Walker(object):
                             line_count = line_count + 1
 
                     if line_count > 2:
-                        print("判断跨页：条件1失败，页脚内容行数 %s" % (line_count))
+                        self.print("判断跨页：条件1失败，页脚内容行数 %s" % (line_count))
                         break
 
-                # print("判断跨页：条件1成功，页脚内容行数 %s" % (line_count))
+                self.print("判断跨页：条件1成功，页脚内容行数 %s" % (line_count))
 
                 # 开始处理下一页
                 page_next = self.pdf.loadPage(page_no)
@@ -516,29 +512,30 @@ class Walker(object):
                 # 获取 hmin ~ hmax 下面的所有文字
                 page_next_texts = self.get_rect_text(page_next, [0, 0, 9999, self.PAGE_MAX_SIZE])
                 if not page_next_texts:
-                    print("判断跨页：条件1失败，页面 %s 无内容" % (page_no))
+                    self.print("判断跨页：条件1失败，页面 %s 无内容" % (page_no))
                     break
 
                 # 获取表格的关键点
                 page_next_table_points = self.find_table_below(page_next, 0, self.PAGE_MAX_SIZE, page_next_texts)
                 if not page_next_table_points:
-                    print("判断跨页：条件1失败，页面 %s 无表格" % (page_no))
+                    self.print("判断跨页：条件1失败，页面 %s 无表格" % (page_no))
                     break
 
                 same_table = self.cmp_table_points(page_table_points, page_next_table_points)
                 if not same_table:
-                    print("判断跨页：条件2失败: 后一页的表格的格式不符合：\n%s\n%s" % (page_table_points, page_next_table_points))
+                    self.print("判断跨页：条件2失败: 后一页的表格的格式不符合：\n%s\n%s" % (page_table_points, page_next_table_points))
                     break
 
                 # 切割表格内的文字
                 table_contents_next = self.find_content_in_table(page_next_table_points, page_next_texts)
-                # print("\ntable_contents_next:\n", table_contents_next)
+                self.print("\ntable_contents_next:\n", table_contents_next)
                 table_contents = np.concatenate([table_contents, table_contents_next])
 
-            # q.d()
+                th_end_next = page_next_table_points[1][0]
+
             return table_contents
         else:
-            print("Cannot find %s in %s" % (title, self.pdf_file))
+            self.print("Cannot find %s in %s" % (title, self.pdf_file))
 
         return None
 
@@ -571,7 +568,7 @@ class Walker(object):
 
         # 剪切出 标题下面的一切
         amin, amax = max(int(hmin + 1), 0), min(img_np.shape[0], 9999)
-        self.save_process_image(img_np[amin:amax], "tmp.1.png")
+        self.save_process_image(img_np[amin:amax], "tw.1.png")
 
         # 计算表格的 关键点
         table_points = self.detect_table_point(img_np[amin:amax], amin, amax, page_texts)
@@ -588,12 +585,12 @@ class Walker(object):
         th_end = int(tb_point_end[0] + hmin)
         tw_start = tb_point_start[1]
         tw_end = tb_point_end[1]
-        print("th_start: %s, th_end: %s, tw_start: %s, tw_end: %s" % (th_start, th_end, tw_start, tw_end))
+        self.print("th_start: %s, th_end: %s, tw_start: %s, tw_end: %s" % (th_start, th_end, tw_start, tw_end))
 
         # 画出目标区域
         np_tmp = np.zeros(img_np.shape)
         np_tmp[th_start:th_end, tw_start:tw_end] = 1
-        self.save_process_image(np_tmp, "tmp.2.png")
+        self.save_process_image(np_tmp, "tw.2.png")
 
         return ((th_start, tw_start), (th_end, tw_end), ht_points, wt_points)
 
@@ -603,11 +600,11 @@ class Walker(object):
 
         # 只提取 表格内部 的内容
         table_content = list(filter(
-            lambda x: (tb_point_start[0] < x[1] < tb_point_end[0] and tb_point_start[1] < x[0] < x[2] < tb_point_end[1]),
+            lambda x: (tb_point_start[0] < (x[3] + x[1]) / 2 < tb_point_end[0] and tb_point_start[1] < (x[0] + x[2]) / 2 < tb_point_end[1]),
             page_texts,
         ))
 
-        print("cut text from table key points:", ht_points, wt_points)
+        self.print("cut text from table key points:", ht_points, wt_points)
         result = self.cut_text(table_content, ht_points, wt_points)
 
         return result
@@ -641,15 +638,21 @@ class TextLoca(object):
 
 
 if __name__ == "__main__":
-    wk = Walker("../../tests/data/20200324164938兴全趋势投资混合型证券投资基金（LOF）2019年度报告.pdf")
-    table_contents = wk.find_table("报告期末按行业分类的境内股票投资组合")
-    # table_contents = wk.find_table("主要会计数据和财务指标")
-    # table_contents = wk.find_table("基金份额净值增长率及其与同期业绩比较基准收益率的比较")
-    # table_contents = wk.find_table("期末按公允价值占基金资产净值比例大小排序的前五名债券投资明细")
-    # table_contents = wk.find_table("累计卖出金额超出期初基金资产净值")
-    # table_contents = wk.find_table("期末按公允价值占基金资产净值比例大小排序的所有股票投资明细")
-    # table_contents = wk.find_table("期末按债券品种分类的债券投资组合")
-    print("\ntable_contents:\n")
-    for line in table_contents:
-        print(line)
+
+    if True:
+        pdf_name = "../../tests/data/20200324164938兴全趋势投资混合型证券投资基金（LOF）2019年度报告.pdf"
+        table_title = ("报告期末按行业分类的境内股票投资组合", "主要会计数据和财务指标", "基金份额净值增长率及其与同期业绩比较基准收益率的比较", "期末按公允价值占基金资产净值比例大小排序的前五名债券投资明细", "累计卖出金额超出期初基金资产净值", "期末按公允价值占基金资产净值比例大小排序的所有股票投资明细", "期末按债券品种分类的债券投资组合",)
+
+    if True:
+        pdf_name = "../../tests/data/20190417181644xqqs.pdf"
+        table_title = ("基金产品概况", "主要财务指标和基金净值表现", "本报告期基金份额净值增长率及其与同期业绩比较基准收益率的比较", "基金经理（或基金经理小组）简介", "基金经理（或基金经理小组）简介", "报告期末基金资产组合情况", "报告期末按行业分类的境内股票投资组合", "报告期末按公允价值占基金资产净值比例大小排序的前十名股票投资明细", "报告期末按债券品种分类的债券投资组合", "报告期末按公允价值占基金资产净值比例大小排序的前五名债券投资明细", "其他资产构成", "报告期末持有的处于转股期的可转换债券明细", )
+        table_title = ("开放式基金份额变动", "基金管理人持有本基金份额变动情况", "报告期内单一投资者持有基金份额比例达到或超过 20%的情况")
+
+    wk = Walker(pdf_name, debug=False)
+    for title in table_title:
+        table_contents = wk.find_table(title)
+        print("\ntable_contents: %s\n" % (title))
+        for line in table_contents:
+            print(line)
+        print()
 

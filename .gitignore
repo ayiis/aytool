@@ -9,3 +9,4 @@ build/
 dist/
 tests/data/
 build.bash
+.DS_Store
