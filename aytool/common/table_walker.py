@@ -35,6 +35,52 @@ class Walker(object):
         self.DEBUG = debug
         self.TEXT_GRAY = text_gray
 
+    def find_main_title(self):
+        """
+            pdf 的主标题，应该出现在前3页，字体应该最大
+        """
+        for page_no in range(3):
+            page = self.pdf.loadPage(page_no)
+            page_texts = page.getTextWords()
+            if not page_texts:
+                continue
+
+            text_list = []
+            for text in page_texts:
+                text_list.append([text[1], text[3], text[3] - text[1], text[4]])
+
+            sorted_text = sorted(text_list, key=lambda x: -x[2])
+            height_end, max_height = sorted_text[0][1], sorted_text[0][2]
+            filter_text = filter(lambda x: max_height - x[2] <= self.PADDING_HEIGHT and x[0] <= height_end + max_height, text_list)
+            return " ".join([x[3] for x in filter_text])
+
+    def get_text_line(self, text_list):
+        """
+            text_list 里的任意一个被匹配到，则返回当前行的内容
+            # 如果需要，可以改成 生成器
+        """
+        for page_no in range(self.page_count):
+
+            page = self.pdf.loadPage(page_no)
+            for title in text_list:
+
+                page_texts = page.getTextWords()
+                match_line = next((t for t in page_texts if title in t[4]), None)
+                if not match_line:
+                    continue
+
+                center = (match_line[3] + match_line[1]) / 2
+                fix = (match_line[3] - match_line[1]) / 2
+
+                line = [t for t in page_texts if abs((t[3] + t[1]) / 2 - center) < fix]
+                line = sorted(line, key=lambda x: x[0])
+
+                line_text = "".join([t[4] for t in line])
+
+                return line_text
+
+        return None
+
     def get_rect_text(self, page, rect):
 
         tab_rect = fitz.Rect(rect).irect
@@ -639,16 +685,19 @@ class TextLoca(object):
 
 if __name__ == "__main__":
 
-    if True:
+    if 1:
         pdf_name = "../../tests/data/20200324164938兴全趋势投资混合型证券投资基金（LOF）2019年度报告.pdf"
         table_title = ("报告期末按行业分类的境内股票投资组合", "主要会计数据和财务指标", "基金份额净值增长率及其与同期业绩比较基准收益率的比较", "期末按公允价值占基金资产净值比例大小排序的前五名债券投资明细", "累计卖出金额超出期初基金资产净值", "期末按公允价值占基金资产净值比例大小排序的所有股票投资明细", "期末按债券品种分类的债券投资组合",)
 
-    if True:
+    if 0:
         pdf_name = "../../tests/data/20190417181644xqqs.pdf"
         table_title = ("基金产品概况", "主要财务指标和基金净值表现", "本报告期基金份额净值增长率及其与同期业绩比较基准收益率的比较", "基金经理（或基金经理小组）简介", "基金经理（或基金经理小组）简介", "报告期末基金资产组合情况", "报告期末按行业分类的境内股票投资组合", "报告期末按公允价值占基金资产净值比例大小排序的前十名股票投资明细", "报告期末按债券品种分类的债券投资组合", "报告期末按公允价值占基金资产净值比例大小排序的前五名债券投资明细", "其他资产构成", "报告期末持有的处于转股期的可转换债券明细", )
         table_title = ("开放式基金份额变动", "基金管理人持有本基金份额变动情况", "报告期内单一投资者持有基金份额比例达到或超过 20%的情况")
 
     wk = Walker(pdf_name, debug=False)
+    main_title = wk.find_main_title()
+    print("main_title:", main_title)
+
     for title in table_title:
         table_contents = wk.find_table(title)
         print("\ntable_contents: %s\n" % (title))
