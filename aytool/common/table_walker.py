@@ -550,7 +550,7 @@ class Walker(object):
                         self.print("判断跨页：条件1失败，页脚内容行数 %s" % (line_count))
                         break
 
-                self.print("判断跨页：条件1成功，页脚内容行数 %s" % (line_count))
+                    self.print("判断跨页：条件1成功，页脚内容行数 %s" % (line_count))
 
                 # 开始处理下一页
                 page_next = self.pdf.loadPage(page_no)
